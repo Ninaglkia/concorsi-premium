@@ -2,22 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import dynamic from "next/dynamic";
-
-const ExtractionScene = dynamic(
-  () => import("@/components/3d/ExtractionScene"),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="w-full h-full flex items-center justify-center">
-        <div className="text-white/30 text-lg">Caricamento scena 3D...</div>
-      </div>
-    ),
-  }
-);
 
 const TOTAL_TICKETS = 50;
-const USER_TICKETS = [7, 15, 23, 38, 42]; // simulated user tickets
+const USER_TICKETS = [7, 15, 23, 38, 42];
 
 function shuffleArray(arr: number[]): number[] {
   const shuffled = [...arr];
@@ -30,71 +17,101 @@ function shuffleArray(arr: number[]): number[] {
 
 type Phase = "idle" | "countdown" | "extracting" | "winner";
 
+// Slot-machine style number spinner
+function NumberSpinner({ target, spinning }: { target: number | null; spinning: boolean }) {
+  const [display, setDisplay] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!spinning || target === null) {
+      setDisplay(target);
+      return;
+    }
+
+    let frame = 0;
+    const totalFrames = 15;
+    const interval = setInterval(() => {
+      if (frame < totalFrames) {
+        setDisplay(Math.floor(Math.random() * TOTAL_TICKETS) + 1);
+        frame++;
+      } else {
+        setDisplay(target);
+        clearInterval(interval);
+      }
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, [target, spinning]);
+
+  return (
+    <div className="relative">
+      <div className="text-[120px] sm:text-[160px] font-bold leading-none tabular-nums text-gradient-gold">
+        {display !== null ? String(display).padStart(2, "0") : "--"}
+      </div>
+    </div>
+  );
+}
+
 export default function ExtractionDemo() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [countdown, setCountdown] = useState(3);
   const [drawnNumbers, setDrawnNumbers] = useState<number[]>([]);
-  const [lastDrawn, setLastDrawn] = useState<number | null>(null);
+  const [currentNumber, setCurrentNumber] = useState<number | null>(null);
+  const [spinning, setSpinning] = useState(false);
   const [winnerNumber, setWinnerNumber] = useState<number | null>(null);
-  const [showConfetti, setShowConfetti] = useState(false);
-  const [speed, setSpeed] = useState<string>("veloce");
   const extractionOrder = useRef<number[]>([]);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const indexRef = useRef(0);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const remaining = TOTAL_TICKETS - drawnNumbers.length;
-  const isUserTicketDrawn = lastDrawn !== null && USER_TICKETS.includes(lastDrawn);
+  const isCurrentUserTicket = currentNumber !== null && USER_TICKETS.includes(currentNumber);
+  const userTicketsRemaining = USER_TICKETS.filter((t) => !drawnNumbers.includes(t));
 
-  // Calculate interval based on remaining numbers
-  const getInterval = useCallback((remaining: number): number => {
-    if (remaining > 40) { setSpeed("veloce"); return 100; }    // fast batch
-    if (remaining > 20) { setSpeed("normale"); return 300; }   // medium
-    if (remaining > 10) { setSpeed("lento"); return 800; }     // slow
-    if (remaining > 5) { setSpeed("suspense"); return 1500; }  // suspense
-    setSpeed("FINALE"); return 3000;                            // final!
-    return 3000;
-  }, []);
+  const getDelay = (rem: number): number => {
+    if (rem > 40) return 3000;
+    if (rem > 20) return 4000;
+    if (rem > 10) return 5000;
+    if (rem > 5) return 7000;
+    return 10000;
+  };
+
+  const getPhaseLabel = (rem: number): string => {
+    if (rem > 40) return "Estrazione Rapida";
+    if (rem > 20) return "Rallentamento...";
+    if (rem > 10) return "Suspense";
+    if (rem > 5) return "Ultimi Numeri!";
+    return "FINALE!";
+  };
 
   const drawNext = useCallback(() => {
     const order = extractionOrder.current;
     const idx = indexRef.current;
 
     if (idx >= order.length - 1) {
-      // Last number = winner!
+      // Winner!
       const winner = order[order.length - 1];
-      setWinnerNumber(winner);
-      setLastDrawn(winner);
-      setPhase("winner");
-      setShowConfetti(true);
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      setSpinning(true);
+      setTimeout(() => {
+        setWinnerNumber(winner);
+        setCurrentNumber(winner);
+        setSpinning(false);
+        setPhase("winner");
+      }, 800);
       return;
     }
 
     const num = order[idx];
-    setDrawnNumbers((prev) => [...prev, num]);
-    setLastDrawn(num);
-    indexRef.current = idx + 1;
-  }, []);
+    setSpinning(true);
 
-  // Adaptive speed extraction
-  useEffect(() => {
-    if (phase !== "extracting") return;
+    setTimeout(() => {
+      setCurrentNumber(num);
+      setDrawnNumbers((prev) => [...prev, num]);
+      setSpinning(false);
+      indexRef.current = idx + 1;
 
-    const tick = () => {
-      drawNext();
       const rem = TOTAL_TICKETS - indexRef.current;
-      const interval = getInterval(rem);
-
-      if (intervalRef.current) clearTimeout(intervalRef.current);
-      intervalRef.current = setTimeout(tick, interval);
-    };
-
-    intervalRef.current = setTimeout(tick, 500);
-
-    return () => {
-      if (intervalRef.current) clearTimeout(intervalRef.current);
-    };
-  }, [phase, drawNext, getInterval]);
+      timeoutRef.current = setTimeout(drawNext, getDelay(rem));
+    }, 750);
+  }, []);
 
   // Countdown
   useEffect(() => {
@@ -107,15 +124,23 @@ export default function ExtractionDemo() {
     return () => clearTimeout(timer);
   }, [phase, countdown]);
 
+  // Start extracting
+  useEffect(() => {
+    if (phase !== "extracting") return;
+    timeoutRef.current = setTimeout(drawNext, 1000);
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [phase, drawNext]);
+
   const startExtraction = () => {
-    // Generate shuffled extraction order
     const allNumbers = Array.from({ length: TOTAL_TICKETS }, (_, i) => i + 1);
     extractionOrder.current = shuffleArray(allNumbers);
     indexRef.current = 0;
     setDrawnNumbers([]);
-    setLastDrawn(null);
+    setCurrentNumber(null);
     setWinnerNumber(null);
-    setShowConfetti(false);
+    setSpinning(false);
     setCountdown(3);
     setPhase("countdown");
   };
@@ -123,269 +148,370 @@ export default function ExtractionDemo() {
   const reset = () => {
     setPhase("idle");
     setDrawnNumbers([]);
-    setLastDrawn(null);
+    setCurrentNumber(null);
     setWinnerNumber(null);
-    setShowConfetti(false);
+    setSpinning(false);
     indexRef.current = 0;
-    if (intervalRef.current) clearTimeout(intervalRef.current);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
   };
 
   const isUserWinner = winnerNumber !== null && USER_TICKETS.includes(winnerNumber);
+  const drawnSet = new Set(drawnNumbers);
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] relative overflow-hidden">
-      {/* Background effects */}
+      {/* Background */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0f] via-[#0f0f1a] to-[#1a1a2e]" />
-      <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-amber-500/5 rounded-full blur-[150px]" />
-      <div className="absolute bottom-1/3 right-1/4 w-80 h-80 bg-purple-500/5 rounded-full blur-[150px]" />
+      <div className="absolute top-1/4 left-1/3 w-[500px] h-[500px] bg-amber-500/5 rounded-full blur-[180px]" />
+      <div className="absolute bottom-1/4 right-1/3 w-[400px] h-[400px] bg-purple-500/5 rounded-full blur-[150px]" />
 
-      {/* Top bar */}
-      <div className="relative z-20 flex items-center justify-between px-6 py-4">
+      {/* Navbar */}
+      <div className="relative z-20 flex items-center justify-between px-4 sm:px-6 py-4">
         <a href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center font-bold text-black text-sm">
             CP
           </div>
-          <span className="text-lg font-bold text-gradient-gold">
+          <span className="text-lg font-bold text-gradient-gold hidden sm:block">
             Concorsi Premium
           </span>
         </a>
         <div className="glass px-4 py-2 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          <span
+            className={`w-2 h-2 rounded-full ${
+              phase === "extracting" ? "bg-red-500 animate-pulse" : "bg-white/30"
+            }`}
+          />
           <span className="text-sm text-white/70">
-            {phase === "extracting" ? "LIVE" : phase === "winner" ? "COMPLETATA" : "DEMO"}
+            {phase === "extracting"
+              ? "LIVE"
+              : phase === "winner"
+              ? "COMPLETATA"
+              : "DEMO"}
           </span>
         </div>
       </div>
 
-      <div className="relative z-10 flex flex-col lg:flex-row h-[calc(100vh-72px)]">
-        {/* 3D Scene */}
-        <div className="flex-1 relative min-h-[400px]">
-          <ExtractionScene
-            totalTickets={TOTAL_TICKETS}
-            drawnNumbers={drawnNumbers}
-            userTickets={USER_TICKETS}
-            winnerNumber={winnerNumber}
-            showConfetti={showConfetti}
-          />
+      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 pb-8">
+        {/* Contest title */}
+        <div className="text-center mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold">
+            Estrazione: <span className="text-gradient-gold">Viaggio alle Maldive</span>
+          </h1>
+          <p className="text-white/40 text-sm mt-1 font-[family-name:var(--font-inter)]">
+            {TOTAL_TICKETS} ticket &bull; Demo
+          </p>
+        </div>
 
-          {/* Countdown overlay */}
-          <AnimatePresence>
+        {/* Main extraction display */}
+        <div className="glass p-6 sm:p-8 mb-6 text-center relative overflow-hidden">
+          {/* Phase label */}
+          {phase === "extracting" && (
+            <motion.div
+              key={getPhaseLabel(remaining)}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`text-sm font-bold mb-2 ${
+                remaining <= 5 ? "text-red-400 animate-pulse" : "text-amber-400/70"
+              }`}
+            >
+              {getPhaseLabel(remaining)}
+            </motion.div>
+          )}
+
+          {/* Countdown */}
+          <AnimatePresence mode="wait">
             {phase === "countdown" && (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+                key={countdown}
+                initial={{ scale: 0.3, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 2, opacity: 0 }}
+                transition={{ duration: 0.4 }}
+                className="py-8"
               >
-                <motion.div
-                  key={countdown}
-                  initial={{ scale: 0.5, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 2, opacity: 0 }}
-                  transition={{ duration: 0.5 }}
-                  className="text-9xl font-bold text-gradient-gold"
-                >
+                <div className="text-[120px] font-bold text-gradient-gold leading-none">
                   {countdown || "VIA!"}
-                </motion.div>
+                </div>
+                <div className="text-white/40 mt-4 text-lg">
+                  L&apos;estrazione sta per iniziare...
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Winner overlay */}
+          {/* Number display */}
+          {(phase === "extracting" || phase === "idle") && (
+            <div className="py-4">
+              <div className="text-xs text-white/30 uppercase tracking-widest mb-2">
+                {phase === "idle" ? "Pronto per l'estrazione" : "Numero Estratto"}
+              </div>
+              <NumberSpinner target={currentNumber} spinning={spinning} />
+              <AnimatePresence>
+                {isCurrentUserTicket && !spinning && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/20 border border-red-500/30"
+                  >
+                    <span className="text-red-400 font-bold text-sm">
+                      Il tuo ticket #{currentNumber} è stato eliminato!
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Winner display */}
           <AnimatePresence>
             {phase === "winner" && (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="absolute inset-0 flex items-center justify-center"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", damping: 12, stiffness: 100 }}
+                className="py-6"
               >
                 <motion.div
-                  initial={{ scale: 0, rotate: -10 }}
-                  animate={{ scale: 1, rotate: 0 }}
-                  transition={{ type: "spring", damping: 10, stiffness: 100, delay: 0.5 }}
-                  className="glass p-8 sm:p-12 text-center glow-gold"
+                  animate={{ rotate: [0, 10, -10, 0] }}
+                  transition={{ repeat: Infinity, duration: 1.5 }}
+                  className="text-7xl mb-4"
                 >
-                  <motion.div
-                    animate={{ rotate: [0, 5, -5, 0] }}
-                    transition={{ repeat: Infinity, duration: 2 }}
-                    className="text-6xl mb-4"
-                  >
-                    🏆
-                  </motion.div>
-                  <h2 className="text-3xl sm:text-4xl font-bold mb-2">
-                    {isUserWinner ? "HAI VINTO!" : "VINCITORE!"}
-                  </h2>
-                  <div className="text-6xl sm:text-7xl font-bold text-gradient-gold my-4">
-                    #{winnerNumber}
-                  </div>
-                  <p className="text-white/50 text-lg mb-6 font-[family-name:var(--font-inter)]">
-                    {isUserWinner
-                      ? "Congratulazioni! Il tuo ticket ha vinto il premio!"
-                      : "Il ticket vincente è stato estratto!"}
-                  </p>
-                  <button
-                    onClick={reset}
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold hover:from-amber-400 hover:to-amber-500 transition-all"
-                  >
-                    Riprova Estrazione
-                  </button>
+                  🏆
                 </motion.div>
+                <div className="text-sm text-amber-400/70 uppercase tracking-widest mb-2">
+                  {isUserWinner ? "Hai Vinto!" : "Il Vincitore"}
+                </div>
+                <div className="text-[100px] sm:text-[140px] font-bold text-gradient-gold leading-none">
+                  {String(winnerNumber).padStart(2, "0")}
+                </div>
+                <p className="text-white/50 mt-4 text-lg font-[family-name:var(--font-inter)]">
+                  {isUserWinner
+                    ? "Congratulazioni! Il tuo ticket ha vinto il viaggio alle Maldive!"
+                    : `Il ticket #${winnerNumber} vince il viaggio alle Maldive!`}
+                </p>
+                <button
+                  onClick={reset}
+                  className="mt-6 px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold hover:from-amber-400 hover:to-amber-500 transition-all glow-gold"
+                >
+                  Riprova Estrazione
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
 
-        {/* Sidebar */}
-        <div className="w-full lg:w-96 glass lg:rounded-none lg:rounded-l-2xl p-6 flex flex-col gap-6 overflow-y-auto max-h-[50vh] lg:max-h-full">
-          {/* Contest info */}
-          <div>
-            <h2 className="text-xl font-bold mb-1">Viaggio alle Maldive</h2>
-            <p className="text-sm text-white/40 font-[family-name:var(--font-inter)]">
-              Demo Estrazione &bull; {TOTAL_TICKETS} ticket
-            </p>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="glass p-3 text-center">
-              <div className="text-2xl font-bold text-gradient-gold">{remaining}</div>
-              <div className="text-xs text-white/40">Rimasti</div>
-            </div>
-            <div className="glass p-3 text-center">
-              <div className="text-2xl font-bold text-white">{drawnNumbers.length}</div>
-              <div className="text-xs text-white/40">Estratti</div>
-            </div>
-          </div>
-
-          {/* Speed indicator */}
+          {/* Remaining counter */}
           {phase === "extracting" && (
-            <div className="glass p-3 text-center">
-              <div className="text-xs text-white/40 mb-1">Velocità</div>
-              <div
-                className={`text-sm font-bold ${
-                  speed === "FINALE"
-                    ? "text-red-400 animate-pulse"
-                    : speed === "suspense"
-                    ? "text-amber-400"
-                    : "text-white/70"
-                }`}
-              >
-                {speed.toUpperCase()}
+            <div className="mt-4 flex items-center justify-center gap-6 text-sm">
+              <div>
+                <span className="text-white/40">Rimasti: </span>
+                <span
+                  className={`font-bold ${
+                    remaining <= 5 ? "text-red-400" : "text-white"
+                  }`}
+                >
+                  {remaining}
+                </span>
+              </div>
+              <div className="w-40 h-2 rounded-full bg-white/5 overflow-hidden">
+                <motion.div
+                  className={`h-full rounded-full ${
+                    remaining <= 5
+                      ? "bg-gradient-to-r from-red-500 to-amber-500"
+                      : "bg-gradient-to-r from-amber-600 to-amber-400"
+                  }`}
+                  animate={{
+                    width: `${(drawnNumbers.length / TOTAL_TICKETS) * 100}%`,
+                  }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
+              <div>
+                <span className="text-white/40">Estratti: </span>
+                <span className="font-bold text-white">{drawnNumbers.length}</span>
               </div>
             </div>
           )}
 
-          {/* Last drawn */}
-          <AnimatePresence mode="wait">
-            {lastDrawn !== null && phase !== "winner" && (
-              <motion.div
-                key={lastDrawn}
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.8, opacity: 0 }}
-                className={`glass p-4 text-center ${
-                  isUserTicketDrawn ? "glow-purple border-purple-500/30" : ""
-                }`}
-              >
-                <div className="text-xs text-white/40 mb-1">Ultimo Estratto</div>
-                <div
-                  className={`text-4xl font-bold ${
-                    isUserTicketDrawn ? "text-purple-400" : "text-white"
-                  }`}
-                >
-                  #{lastDrawn}
-                </div>
-                {isUserTicketDrawn && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="text-red-400 text-sm mt-1 font-bold"
-                  >
-                    Il tuo ticket è uscito!
-                  </motion.div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Last 5 drawn numbers */}
+          {phase === "extracting" && drawnNumbers.length > 0 && (
+            <div className="mt-6 pt-5 border-t border-white/5">
+              <div className="text-xs text-white/30 uppercase tracking-widest mb-3">
+                Ultimi Numeri Estratti
+              </div>
+              <div className="flex items-center justify-center gap-3">
+                {drawnNumbers.slice(-5).reverse().map((num, i) => {
+                  const isUser = USER_TICKETS.includes(num);
+                  return (
+                    <motion.div
+                      key={`${num}-${drawnNumbers.length}`}
+                      initial={i === 0 ? { scale: 1.4, opacity: 0 } : {}}
+                      animate={{ scale: 1 - i * 0.08, opacity: 1 - i * 0.18 }}
+                      transition={{ duration: 0.3 }}
+                      className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl flex items-center justify-center font-bold text-lg sm:text-xl ${
+                        isUser
+                          ? "bg-red-500/20 border-2 border-red-500/40 text-red-400"
+                          : "bg-white/[0.06] border border-white/10 text-white/70"
+                      } ${i === 0 ? "ring-2 ring-amber-400/50" : ""}`}
+                    >
+                      {num}
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
 
-          {/* User tickets */}
-          <div>
-            <h3 className="text-sm font-semibold text-white/60 mb-2">I Tuoi Ticket</h3>
-            <div className="flex flex-wrap gap-2">
+        {/* User tickets + Grid layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* User tickets panel */}
+          <div className="lg:col-span-1 glass p-5">
+            <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-4">
+              I Tuoi Ticket
+            </h3>
+            <div className="flex flex-row lg:flex-col gap-3">
               {USER_TICKETS.map((t) => {
-                const eliminated = drawnNumbers.includes(t);
+                const eliminated = drawnSet.has(t);
                 const isWin = winnerNumber === t;
                 return (
-                  <div
+                  <motion.div
                     key={t}
-                    className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold transition-all duration-300 ${
+                    animate={
                       isWin
-                        ? "bg-gradient-to-br from-amber-400 to-amber-600 text-black glow-gold scale-110"
+                        ? { scale: [1, 1.1, 1], boxShadow: ["0 0 0px #f59e0b", "0 0 30px #f59e0b", "0 0 15px #f59e0b"] }
+                        : {}
+                    }
+                    transition={isWin ? { repeat: Infinity, duration: 1.5 } : {}}
+                    className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-500 ${
+                      isWin
+                        ? "bg-gradient-to-r from-amber-500/30 to-amber-600/20 border border-amber-500/50"
                         : eliminated
-                        ? "bg-red-500/20 text-red-400 line-through opacity-50"
-                        : "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                        ? "bg-red-500/10 border border-red-500/20 opacity-40"
+                        : "bg-purple-500/10 border border-purple-500/30"
                     }`}
                   >
-                    {t}
-                  </div>
+                    <div
+                      className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-lg ${
+                        isWin
+                          ? "bg-amber-500 text-black"
+                          : eliminated
+                          ? "bg-red-500/20 text-red-400 line-through"
+                          : "bg-purple-500/20 text-purple-300"
+                      }`}
+                    >
+                      {t}
+                    </div>
+                    <span
+                      className={`text-xs font-medium ${
+                        isWin
+                          ? "text-amber-400"
+                          : eliminated
+                          ? "text-red-400/60"
+                          : "text-purple-300/60"
+                      }`}
+                    >
+                      {isWin ? "VINCENTE!" : eliminated ? "Eliminato" : "In gioco"}
+                    </span>
+                  </motion.div>
                 );
               })}
             </div>
+            {phase === "extracting" && (
+              <div className="mt-4 pt-4 border-t border-white/5 text-center">
+                <div className="text-xs text-white/30">Tuoi ticket ancora in gioco</div>
+                <div className="text-2xl font-bold text-purple-400">
+                  {userTicketsRemaining.length}/{USER_TICKETS.length}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Progress bar */}
-          <div>
-            <div className="flex justify-between text-xs text-white/40 mb-1">
-              <span>Progresso estrazione</span>
-              <span>{Math.round((drawnNumbers.length / TOTAL_TICKETS) * 100)}%</span>
-            </div>
-            <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden">
-              <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-amber-600 to-amber-400"
-                animate={{ width: `${(drawnNumbers.length / TOTAL_TICKETS) * 100}%` }}
-                transition={{ duration: 0.3 }}
-              />
-            </div>
-          </div>
+          {/* Number grid */}
+          <div className="lg:col-span-3 glass p-5">
+            <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-4">
+              Tutti i Ticket
+            </h3>
+            <div className="grid grid-cols-10 gap-1.5 sm:gap-2">
+              {Array.from({ length: TOTAL_TICKETS }, (_, i) => i + 1).map((num) => {
+                const eliminated = drawnSet.has(num);
+                const isUser = USER_TICKETS.includes(num);
+                const isWin = winnerNumber === num;
+                const justDrawn = currentNumber === num && !spinning;
 
-          {/* Drawn numbers log */}
-          {drawnNumbers.length > 0 && phase !== "idle" && (
-            <div>
-              <h3 className="text-sm font-semibold text-white/60 mb-2">Numeri Estratti</h3>
-              <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
-                {drawnNumbers.map((n, i) => (
-                  <span
-                    key={i}
-                    className={`text-xs px-1.5 py-0.5 rounded ${
-                      USER_TICKETS.includes(n)
-                        ? "bg-red-500/20 text-red-400"
-                        : "bg-white/5 text-white/30"
+                return (
+                  <motion.div
+                    key={num}
+                    animate={
+                      justDrawn && !isWin
+                        ? { scale: [1, 1.3, 0.8], opacity: [1, 1, 0.3] }
+                        : isWin
+                        ? { scale: [1, 1.2, 1] }
+                        : {}
+                    }
+                    transition={
+                      isWin
+                        ? { repeat: Infinity, duration: 1 }
+                        : { duration: 0.5 }
+                    }
+                    className={`aspect-square rounded-lg flex items-center justify-center text-xs sm:text-sm font-bold transition-all duration-300 ${
+                      isWin
+                        ? "bg-gradient-to-br from-amber-400 to-amber-600 text-black ring-2 ring-amber-400 glow-gold"
+                        : eliminated && isUser
+                        ? "bg-red-500/15 text-red-400/30 border border-red-500/10"
+                        : eliminated
+                        ? "bg-white/[0.02] text-white/10"
+                        : isUser
+                        ? "bg-purple-500/20 text-purple-300 border border-purple-500/40 glow-purple"
+                        : "bg-white/[0.06] text-white/60 border border-white/5"
                     }`}
                   >
-                    {n}
-                  </span>
-                ))}
+                    {num}
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {/* Legend */}
+            <div className="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t border-white/5">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-white/[0.06] border border-white/5" />
+                <span className="text-xs text-white/30">In gioco</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-purple-500/20 border border-purple-500/40" />
+                <span className="text-xs text-white/30">Tuo ticket</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-white/[0.02]" />
+                <span className="text-xs text-white/30">Eliminato</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-gradient-to-br from-amber-400 to-amber-600" />
+                <span className="text-xs text-white/30">Vincitore</span>
               </div>
             </div>
-          )}
-
-          {/* Action button */}
-          <div className="mt-auto">
-            {phase === "idle" && (
-              <button
-                onClick={startExtraction}
-                className="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold text-lg hover:from-amber-400 hover:to-amber-500 transition-all duration-200 glow-gold"
-              >
-                Avvia Estrazione Demo
-              </button>
-            )}
-            {phase === "extracting" && (
-              <div className="text-center text-white/30 text-sm font-[family-name:var(--font-inter)]">
-                Estrazione in corso...
-              </div>
-            )}
           </div>
         </div>
+
+        {/* Start button */}
+        {phase === "idle" && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8 text-center"
+          >
+            <button
+              onClick={startExtraction}
+              className="px-12 py-5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold text-xl hover:from-amber-400 hover:to-amber-500 transition-all duration-200 glow-gold"
+            >
+              Avvia Estrazione Demo
+            </button>
+            <p className="text-white/30 text-sm mt-3 font-[family-name:var(--font-inter)]">
+              50 ticket &bull; 5 sono tuoi &bull; l&apos;ultimo numero rimasto vince
+            </p>
+          </motion.div>
+        )}
       </div>
     </div>
   );
