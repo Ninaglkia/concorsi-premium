@@ -15,7 +15,7 @@ function shuffleArray(arr: number[]): number[] {
   return shuffled;
 }
 
-type Phase = "idle" | "countdown" | "batch" | "slow" | "suspense" | "finale" | "winner";
+type Phase = "idle" | "countdown" | "batch" | "slow" | "suspense" | "finale" | "showdown" | "winner";
 
 // Slot-machine style number spinner
 function NumberSpinner({ target, spinning, total }: { target: number | null; spinning: boolean; total: number }) {
@@ -51,7 +51,6 @@ function NumberSpinner({ target, spinning, total }: { target: number | null; spi
   );
 }
 
-// Batch progress indicator (for the fast phase)
 function BatchProgress({ current, total, batchSize }: { current: number; total: number; batchSize: number }) {
   const batchNum = Math.floor(current / batchSize) + 1;
   const totalBatches = Math.ceil(total / batchSize);
@@ -60,6 +59,188 @@ function BatchProgress({ current, total, batchSize }: { current: number; total: 
       <span className="text-white/40">Blocco</span>
       <span className="font-bold text-amber-400">{batchNum}/{totalBatches}</span>
       <span className="text-white/40">({batchSize} numeri per blocco)</span>
+    </div>
+  );
+}
+
+// Heartbeat CSS animation via style tag
+function HeartbeatStyle() {
+  return (
+    <style jsx global>{`
+      @keyframes heartbeat {
+        0%, 100% { transform: scale(1); }
+        15% { transform: scale(1.08); }
+        30% { transform: scale(1); }
+        45% { transform: scale(1.05); }
+        60% { transform: scale(1); }
+      }
+      @keyframes heartbeat-glow {
+        0%, 100% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.2), 0 0 60px rgba(245, 158, 11, 0.05); }
+        15% { box-shadow: 0 0 40px rgba(245, 158, 11, 0.5), 0 0 80px rgba(245, 158, 11, 0.15); }
+        30% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.2), 0 0 60px rgba(245, 158, 11, 0.05); }
+        45% { box-shadow: 0 0 35px rgba(245, 158, 11, 0.4), 0 0 70px rgba(245, 158, 11, 0.1); }
+        60% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.2), 0 0 60px rgba(245, 158, 11, 0.05); }
+      }
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        10% { transform: translateX(-3px) rotate(-0.5deg); }
+        20% { transform: translateX(3px) rotate(0.5deg); }
+        30% { transform: translateX(-3px) rotate(-0.5deg); }
+        40% { transform: translateX(3px) rotate(0.5deg); }
+        50% { transform: translateX(-2px); }
+        60% { transform: translateX(2px); }
+        70% { transform: translateX(-2px); }
+        80% { transform: translateX(2px); }
+        90% { transform: translateX(-1px); }
+      }
+      @keyframes dots {
+        0% { content: ''; }
+        25% { content: '.'; }
+        50% { content: '..'; }
+        75% { content: '...'; }
+        100% { content: '......'; }
+      }
+      .heartbeat { animation: heartbeat 1s ease-in-out infinite; }
+      .heartbeat-glow { animation: heartbeat-glow 1s ease-in-out infinite; }
+      .shake { animation: shake 0.6s ease-in-out infinite; }
+    `}</style>
+  );
+}
+
+// Showdown component - the dramatic 3-number finale
+function Showdown({
+  finalThree,
+  winnerNumber,
+  showdownStep,
+  userTickets,
+}: {
+  finalThree: number[];
+  winnerNumber: number;
+  showdownStep: "shake" | "reveal-text" | "eliminate" | "winner";
+  userTickets: number[];
+}) {
+  const losers = finalThree.filter((n) => n !== winnerNumber);
+  const isUserWinner = userTickets.includes(winnerNumber);
+
+  return (
+    <div className="py-8 sm:py-12">
+      {/* "Il vincitore è......" text */}
+      {(showdownStep === "reveal-text" || showdownStep === "eliminate" || showdownStep === "winner") && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          className="mb-8"
+        >
+          <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white/80">
+            Il vincitore è
+            <motion.span
+              animate={{ opacity: [0.3, 1, 0.3] }}
+              transition={{ repeat: showdownStep === "winner" ? 0 : Infinity, duration: 1.5 }}
+              className="text-amber-400"
+            >
+              ......
+            </motion.span>
+          </div>
+        </motion.div>
+      )}
+
+      {/* The three numbers */}
+      <div className="flex items-center justify-center gap-4 sm:gap-8 md:gap-12">
+        {finalThree.map((num) => {
+          const isWin = num === winnerNumber;
+          const isLoser = losers.includes(num);
+          const isUser = userTickets.includes(num);
+          const eliminated = showdownStep === "eliminate" || showdownStep === "winner";
+
+          return (
+            <AnimatePresence key={num} mode="wait">
+              {/* Hide losers in eliminate/winner step */}
+              {!(isLoser && showdownStep === "winner") && (
+                <motion.div
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={
+                    showdownStep === "shake"
+                      ? { scale: 1, opacity: 1 }
+                      : isLoser && eliminated
+                      ? { scale: 0.3, opacity: 0, y: 50, filter: "blur(10px)" }
+                      : isWin && showdownStep === "winner"
+                      ? { scale: 1.3, opacity: 1 }
+                      : { scale: 1, opacity: 1 }
+                  }
+                  exit={{ scale: 0, opacity: 0, y: 80, filter: "blur(20px)" }}
+                  transition={
+                    isLoser && eliminated
+                      ? { duration: 1.5, ease: "easeInOut" }
+                      : isWin && showdownStep === "winner"
+                      ? { type: "spring", damping: 8, stiffness: 80 }
+                      : { type: "spring", damping: 12, stiffness: 100 }
+                  }
+                  className={`relative flex flex-col items-center ${
+                    showdownStep === "shake" || showdownStep === "reveal-text" ? "shake" : ""
+                  }`}
+                >
+                  <div
+                    className={`w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-2xl flex items-center justify-center font-bold text-3xl sm:text-4xl md:text-5xl transition-all duration-500 ${
+                      isWin && showdownStep === "winner"
+                        ? "bg-gradient-to-br from-amber-400 to-amber-600 text-black heartbeat-glow"
+                        : isWin
+                        ? "heartbeat-glow"
+                        : ""
+                    } ${
+                      isUser
+                        ? "bg-purple-500/20 text-purple-300 border-2 border-purple-500/50"
+                        : "bg-white/[0.08] text-white border-2 border-white/20"
+                    } ${
+                      showdownStep === "shake" || showdownStep === "reveal-text"
+                        ? "heartbeat"
+                        : ""
+                    }`}
+                    style={
+                      isWin && showdownStep === "winner"
+                        ? { animation: "none", transform: "scale(1)" }
+                        : {}
+                    }
+                  >
+                    {num}
+                  </div>
+                  {isUser && (
+                    <span className="mt-2 text-xs text-purple-400 font-bold">TUO</span>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          );
+        })}
+      </div>
+
+      {/* Winner reveal */}
+      <AnimatePresence>
+        {showdownStep === "winner" && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1, duration: 0.8 }}
+            className="mt-10"
+          >
+            <motion.div
+              animate={{ rotate: [0, 10, -10, 0] }}
+              transition={{ repeat: Infinity, duration: 1.5 }}
+              className="text-6xl sm:text-7xl mb-4"
+            >
+              🏆
+            </motion.div>
+            <div className="text-4xl sm:text-5xl md:text-6xl font-bold text-gradient-gold mb-3">
+              #{winnerNumber}
+            </div>
+            <p className="text-white/50 text-lg font-[family-name:var(--font-inter)]">
+              {isUserWinner
+                ? "Congratulazioni! Il tuo ticket ha vinto il viaggio alle Maldive!"
+                : `Il ticket #${winnerNumber} vince il viaggio alle Maldive!`}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -77,22 +258,17 @@ export default function ExtractionDemo() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const [userEliminated, setUserEliminated] = useState<number | null>(null);
+  const [showdownStep, setShowdownStep] = useState<"shake" | "reveal-text" | "eliminate" | "winner">("shake");
+  const [finalThree, setFinalThree] = useState<number[]>([]);
 
   const remaining = TOTAL_TICKETS - drawnNumbers.length;
-  const isCurrentUserTicket = currentNumber !== null && USER_TICKETS.includes(currentNumber);
   const userTicketsRemaining = USER_TICKETS.filter((t) => !drawnNumbers.includes(t));
   const drawnSet = new Set(drawnNumbers);
 
-  // --- PHASE CONFIG ---
-  // Batch phase: first 1800 numbers in batches of 50 every 3s (~108s = ~2 min)
-  // Slow phase: next 150 numbers, one every 2s (~5 min)
-  // Suspense phase: next 40 numbers, one every 4s (~2.5 min)
-  // Finale phase: last 10 numbers, one every 8s (~1.3 min)
-  // Total: ~11 minutes
-
-  const BATCH_THRESHOLD = 200; // switch to individual at 200 remaining
+  const BATCH_THRESHOLD = 200;
   const SLOW_THRESHOLD = 50;
   const SUSPENSE_THRESHOLD = 10;
+  const FINALE_THRESHOLD = 3; // trigger showdown at 3
   const BATCH_SIZE = 50;
   const BATCH_INTERVAL = 3000;
 
@@ -100,7 +276,8 @@ export default function ExtractionDemo() {
     if (rem > BATCH_THRESHOLD) return "batch";
     if (rem > SLOW_THRESHOLD) return "slow";
     if (rem > SUSPENSE_THRESHOLD) return "suspense";
-    return "finale";
+    if (rem > FINALE_THRESHOLD) return "finale";
+    return "showdown";
   };
 
   const getPhaseLabel = (p: Phase): string => {
@@ -109,6 +286,7 @@ export default function ExtractionDemo() {
       case "slow": return "Rallentamento...";
       case "suspense": return "Suspense!";
       case "finale": return "FINALE!";
+      case "showdown": return "SHOWDOWN!";
       default: return "";
     }
   };
@@ -120,7 +298,6 @@ export default function ExtractionDemo() {
     const rem = TOTAL_TICKETS - idx;
 
     if (rem <= BATCH_THRESHOLD) {
-      // Switch to individual mode
       setPhase("slow");
       return;
     }
@@ -128,7 +305,6 @@ export default function ExtractionDemo() {
     const batchEnd = Math.min(idx + BATCH_SIZE, order.length - BATCH_THRESHOLD - 1);
     const batch = order.slice(idx, batchEnd);
 
-    // Show last number of batch in spinner
     setSpinning(true);
     setTimeout(() => {
       setBatchNumbers(batch);
@@ -137,7 +313,6 @@ export default function ExtractionDemo() {
       setSpinning(false);
       indexRef.current = batchEnd;
 
-      // Check if any user ticket was in this batch
       const userHit = batch.find((n) => USER_TICKETS.includes(n));
       if (userHit) {
         setUserEliminated(userHit);
@@ -153,21 +328,19 @@ export default function ExtractionDemo() {
     }, 600);
   }, []);
 
-  // Draw individual number (slow/suspense/finale phases)
+  // Draw individual number
   const drawSingle = useCallback(() => {
     const order = extractionOrder.current;
     const idx = indexRef.current;
+    const rem = TOTAL_TICKETS - idx;
 
-    if (idx >= order.length - 1) {
-      // Winner!
-      const winner = order[order.length - 1];
-      setSpinning(true);
-      setTimeout(() => {
-        setWinnerNumber(winner);
-        setCurrentNumber(winner);
-        setSpinning(false);
-        setPhase("winner");
-      }, 1200);
+    // When 3 remain, switch to showdown
+    if (rem <= FINALE_THRESHOLD) {
+      const remainingNums = order.slice(idx);
+      const winner = remainingNums[remainingNums.length - 1];
+      setFinalThree(remainingNums);
+      setWinnerNumber(winner);
+      setPhase("showdown");
       return;
     }
 
@@ -187,7 +360,7 @@ export default function ExtractionDemo() {
 
       const newRem = TOTAL_TICKETS - indexRef.current;
       const newPhase = getPhaseForRemaining(newRem);
-      if (newPhase !== phase) setPhase(newPhase);
+      if (newPhase !== phase && newPhase !== "showdown") setPhase(newPhase);
 
       let delay: number;
       if (newRem > SLOW_THRESHOLD) delay = 2000;
@@ -196,6 +369,35 @@ export default function ExtractionDemo() {
 
       timeoutRef.current = setTimeout(drawSingle, delay);
     }, 800);
+  }, [phase]);
+
+  // Showdown sequence
+  useEffect(() => {
+    if (phase !== "showdown") return;
+
+    setShowdownStep("shake");
+
+    // Step 1: Shake for 3 seconds
+    const t1 = setTimeout(() => {
+      setShowdownStep("reveal-text");
+    }, 3000);
+
+    // Step 2: "Il vincitore è......" for 4 seconds
+    const t2 = setTimeout(() => {
+      setShowdownStep("eliminate");
+    }, 7000);
+
+    // Step 3: Losers fade away for 2 seconds, then winner
+    const t3 = setTimeout(() => {
+      setShowdownStep("winner");
+      setPhase("winner");
+    }, 9500);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
   }, [phase]);
 
   // Phase transitions
@@ -231,6 +433,8 @@ export default function ExtractionDemo() {
     setWinnerNumber(null);
     setSpinning(false);
     setUserEliminated(null);
+    setFinalThree([]);
+    setShowdownStep("shake");
     setCountdown(5);
     setPhase("countdown");
   };
@@ -243,19 +447,40 @@ export default function ExtractionDemo() {
     setWinnerNumber(null);
     setSpinning(false);
     setUserEliminated(null);
+    setFinalThree([]);
+    setShowdownStep("shake");
     indexRef.current = 0;
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
   };
 
   const isUserWinner = winnerNumber !== null && USER_TICKETS.includes(winnerNumber);
   const isExtracting = phase === "batch" || phase === "slow" || phase === "suspense" || phase === "finale";
+  const isShowdownOrWinner = phase === "showdown" || phase === "winner";
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] relative overflow-hidden">
+      <HeartbeatStyle />
+
       {/* Background */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0f] via-[#0f0f1a] to-[#1a1a2e]" />
       <div className="absolute top-1/4 left-1/3 w-[500px] h-[500px] bg-amber-500/5 rounded-full blur-[180px]" />
       <div className="absolute bottom-1/4 right-1/3 w-[400px] h-[400px] bg-purple-500/5 rounded-full blur-[150px]" />
+
+      {/* Extra glow during showdown */}
+      {isShowdownOrWinner && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="absolute inset-0 bg-gradient-to-b from-amber-500/5 via-transparent to-purple-500/5"
+          />
+          <motion.div
+            animate={{ opacity: [0.05, 0.15, 0.05] }}
+            transition={{ repeat: Infinity, duration: 1, ease: "easeInOut" }}
+            className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-amber-500/10 rounded-full blur-[200px]"
+          />
+        </>
+      )}
 
       {/* Navbar */}
       <div className="relative z-20 flex items-center justify-between px-4 sm:px-6 py-4">
@@ -268,24 +493,29 @@ export default function ExtractionDemo() {
           </span>
         </a>
         <div className="flex items-center gap-3">
-          {isExtracting && (
+          {(isExtracting || isShowdownOrWinner) && (
             <div className="glass px-3 py-1.5 text-xs">
               <span className="text-white/40">Fase: </span>
               <span className={`font-bold ${
+                isShowdownOrWinner ? "text-red-400 animate-pulse" :
                 phase === "finale" ? "text-red-400 animate-pulse" :
                 phase === "suspense" ? "text-amber-400" :
                 "text-white/70"
               }`}>
-                {getPhaseLabel(phase)}
+                {isShowdownOrWinner ? "SHOWDOWN!" : getPhaseLabel(phase)}
               </span>
             </div>
           )}
           <div className="glass px-4 py-2 flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${
-              isExtracting ? "bg-red-500 animate-pulse" : "bg-white/30"
+              isExtracting || isShowdownOrWinner ? "bg-red-500 animate-pulse" : "bg-white/30"
             }`} />
             <span className="text-sm text-white/70">
-              {isExtracting ? "LIVE" : phase === "winner" ? "COMPLETATA" : "DEMO"}
+              {isExtracting || phase === "showdown"
+                ? "LIVE"
+                : phase === "winner"
+                ? "COMPLETATA"
+                : "DEMO"}
             </span>
           </div>
         </div>
@@ -303,7 +533,9 @@ export default function ExtractionDemo() {
         </div>
 
         {/* Main extraction display */}
-        <div className="glass p-6 sm:p-8 mb-6 text-center relative overflow-hidden">
+        <div className={`glass p-6 sm:p-8 mb-6 text-center relative overflow-hidden ${
+          isShowdownOrWinner ? "border-amber-500/20" : ""
+        }`}>
           {/* Countdown */}
           <AnimatePresence mode="wait">
             {phase === "countdown" && (
@@ -325,7 +557,7 @@ export default function ExtractionDemo() {
             )}
           </AnimatePresence>
 
-          {/* Number display */}
+          {/* Normal number display */}
           {(isExtracting || phase === "idle") && (
             <div className="py-2">
               <div className="text-xs text-white/30 uppercase tracking-widest mb-1">
@@ -335,7 +567,6 @@ export default function ExtractionDemo() {
               </div>
               <NumberSpinner target={currentNumber} spinning={spinning} total={TOTAL_TICKETS} />
 
-              {/* User ticket eliminated alert */}
               <AnimatePresence>
                 {userEliminated !== null && (
                   <motion.div
@@ -352,7 +583,6 @@ export default function ExtractionDemo() {
                 )}
               </AnimatePresence>
 
-              {/* Batch info */}
               {phase === "batch" && (
                 <div className="mt-4 flex items-center justify-center">
                   <BatchProgress
@@ -365,47 +595,35 @@ export default function ExtractionDemo() {
             </div>
           )}
 
-          {/* Winner display */}
-          <AnimatePresence>
-            {phase === "winner" && (
-              <motion.div
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", damping: 12, stiffness: 100 }}
-                className="py-6"
+          {/* SHOWDOWN — dramatic 3-number finale */}
+          {isShowdownOrWinner && finalThree.length > 0 && winnerNumber !== null && (
+            <Showdown
+              finalThree={finalThree}
+              winnerNumber={winnerNumber}
+              showdownStep={showdownStep}
+              userTickets={USER_TICKETS}
+            />
+          )}
+
+          {/* Replay button (winner phase) */}
+          {phase === "winner" && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 2 }}
+            >
+              <button
+                onClick={reset}
+                className="mt-4 px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold hover:from-amber-400 hover:to-amber-500 transition-all glow-gold"
               >
-                <motion.div
-                  animate={{ rotate: [0, 10, -10, 0] }}
-                  transition={{ repeat: Infinity, duration: 1.5 }}
-                  className="text-7xl sm:text-8xl mb-4"
-                >
-                  🏆
-                </motion.div>
-                <div className="text-sm text-amber-400/70 uppercase tracking-widest mb-2">
-                  {isUserWinner ? "Hai Vinto!" : "Il Vincitore"}
-                </div>
-                <div className="text-[80px] sm:text-[120px] font-bold text-gradient-gold leading-none">
-                  #{winnerNumber}
-                </div>
-                <p className="text-white/50 mt-4 text-lg font-[family-name:var(--font-inter)]">
-                  {isUserWinner
-                    ? "Congratulazioni! Il tuo ticket ha vinto il viaggio alle Maldive!"
-                    : `Il ticket #${winnerNumber} vince il viaggio alle Maldive!`}
-                </p>
-                <button
-                  onClick={reset}
-                  className="mt-6 px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold hover:from-amber-400 hover:to-amber-500 transition-all glow-gold"
-                >
-                  Riprova Estrazione
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                Riprova Estrazione
+              </button>
+            </motion.div>
+          )}
 
           {/* Stats bar */}
           {isExtracting && (
             <div className="mt-4 space-y-3">
-              {/* Counter + progress */}
               <div className="flex items-center justify-center gap-6 text-sm">
                 <div>
                   <span className="text-white/40">Rimasti: </span>
@@ -436,7 +654,7 @@ export default function ExtractionDemo() {
                 </div>
               </div>
 
-              {/* Last drawn numbers (individual phases only) */}
+              {/* Last drawn numbers */}
               {phase !== "batch" && drawnNumbers.length > 0 && (
                 <div className="pt-4 border-t border-white/5">
                   <div className="text-xs text-white/30 uppercase tracking-widest mb-3">
@@ -465,7 +683,7 @@ export default function ExtractionDemo() {
                 </div>
               )}
 
-              {/* Last batch numbers (batch phase) */}
+              {/* Batch numbers */}
               {phase === "batch" && batchNumbers.length > 0 && (
                 <div className="pt-4 border-t border-white/5">
                   <div className="text-xs text-white/30 uppercase tracking-widest mb-3">
@@ -494,130 +712,131 @@ export default function ExtractionDemo() {
           )}
         </div>
 
-        {/* User tickets + grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* User tickets panel */}
-          <div className="lg:col-span-1 glass p-5">
-            <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-4">
-              I Tuoi Ticket ({USER_TICKETS.length})
-            </h3>
-            <div className="flex flex-row lg:flex-col flex-wrap gap-2 lg:gap-3">
-              {USER_TICKETS.map((t) => {
-                const eliminated = drawnSet.has(t);
-                const isWin = winnerNumber === t;
-                return (
-                  <motion.div
-                    key={t}
-                    animate={
-                      isWin
-                        ? { scale: [1, 1.1, 1], boxShadow: ["0 0 0px #f59e0b", "0 0 30px #f59e0b", "0 0 15px #f59e0b"] }
-                        : {}
-                    }
-                    transition={isWin ? { repeat: Infinity, duration: 1.5 } : {}}
-                    className={`flex items-center gap-3 p-2.5 lg:p-3 rounded-xl transition-all duration-500 ${
-                      isWin
-                        ? "bg-gradient-to-r from-amber-500/30 to-amber-600/20 border border-amber-500/50"
-                        : eliminated
-                        ? "bg-red-500/10 border border-red-500/20 opacity-40"
-                        : "bg-purple-500/10 border border-purple-500/30"
-                    }`}
-                  >
-                    <div
-                      className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold ${
-                        isWin
-                          ? "bg-amber-500 text-black"
-                          : eliminated
-                          ? "bg-red-500/20 text-red-400 line-through"
-                          : "bg-purple-500/20 text-purple-300"
-                      }`}
-                    >
-                      {t}
-                    </div>
-                    <span
-                      className={`text-xs font-medium hidden lg:block ${
-                        isWin
-                          ? "text-amber-400"
-                          : eliminated
-                          ? "text-red-400/60"
-                          : "text-purple-300/60"
-                      }`}
-                    >
-                      {isWin ? "VINCENTE!" : eliminated ? "Eliminato" : "In gioco"}
-                    </span>
-                  </motion.div>
-                );
-              })}
-            </div>
-            {isExtracting && (
-              <div className="mt-4 pt-4 border-t border-white/5 text-center">
-                <div className="text-xs text-white/30">Ancora in gioco</div>
-                <div className={`text-3xl font-bold ${
-                  userTicketsRemaining.length === 0 ? "text-red-400" : "text-purple-400"
-                }`}>
-                  {userTicketsRemaining.length}/{USER_TICKETS.length}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Number grid */}
-          <div className="lg:col-span-4 glass p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider">
-                Tutti i {TOTAL_TICKETS.toLocaleString("it-IT")} Ticket
+        {/* User tickets + grid (hide during showdown for focus) */}
+        {!isShowdownOrWinner && (
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* User tickets panel */}
+            <div className="lg:col-span-1 glass p-5">
+              <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-4">
+                I Tuoi Ticket ({USER_TICKETS.length})
               </h3>
-              {/* Legend */}
-              <div className="hidden sm:flex items-center gap-4">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded bg-white/[0.06] border border-white/5" />
-                  <span className="text-[10px] text-white/30">In gioco</span>
+              <div className="flex flex-row lg:flex-col flex-wrap gap-2 lg:gap-3">
+                {USER_TICKETS.map((t) => {
+                  const eliminated = drawnSet.has(t);
+                  const isWin = winnerNumber === t;
+                  return (
+                    <motion.div
+                      key={t}
+                      animate={
+                        isWin
+                          ? { scale: [1, 1.1, 1], boxShadow: ["0 0 0px #f59e0b", "0 0 30px #f59e0b", "0 0 15px #f59e0b"] }
+                          : {}
+                      }
+                      transition={isWin ? { repeat: Infinity, duration: 1.5 } : {}}
+                      className={`flex items-center gap-3 p-2.5 lg:p-3 rounded-xl transition-all duration-500 ${
+                        isWin
+                          ? "bg-gradient-to-r from-amber-500/30 to-amber-600/20 border border-amber-500/50"
+                          : eliminated
+                          ? "bg-red-500/10 border border-red-500/20 opacity-40"
+                          : "bg-purple-500/10 border border-purple-500/30"
+                      }`}
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold ${
+                          isWin
+                            ? "bg-amber-500 text-black"
+                            : eliminated
+                            ? "bg-red-500/20 text-red-400 line-through"
+                            : "bg-purple-500/20 text-purple-300"
+                        }`}
+                      >
+                        {t}
+                      </div>
+                      <span
+                        className={`text-xs font-medium hidden lg:block ${
+                          isWin
+                            ? "text-amber-400"
+                            : eliminated
+                            ? "text-red-400/60"
+                            : "text-purple-300/60"
+                        }`}
+                      >
+                        {isWin ? "VINCENTE!" : eliminated ? "Eliminato" : "In gioco"}
+                      </span>
+                    </motion.div>
+                  );
+                })}
+              </div>
+              {isExtracting && (
+                <div className="mt-4 pt-4 border-t border-white/5 text-center">
+                  <div className="text-xs text-white/30">Ancora in gioco</div>
+                  <div className={`text-3xl font-bold ${
+                    userTicketsRemaining.length === 0 ? "text-red-400" : "text-purple-400"
+                  }`}>
+                    {userTicketsRemaining.length}/{USER_TICKETS.length}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded bg-purple-500/20 border border-purple-500/40" />
-                  <span className="text-[10px] text-white/30">Tuo</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded bg-white/[0.02]" />
-                  <span className="text-[10px] text-white/30">Eliminato</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded bg-gradient-to-br from-amber-400 to-amber-600" />
-                  <span className="text-[10px] text-white/30">Vincitore</span>
+              )}
+            </div>
+
+            {/* Number grid */}
+            <div className="lg:col-span-4 glass p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-white/60 uppercase tracking-wider">
+                  Tutti i {TOTAL_TICKETS.toLocaleString("it-IT")} Ticket
+                </h3>
+                <div className="hidden sm:flex items-center gap-4">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-white/[0.06] border border-white/5" />
+                    <span className="text-[10px] text-white/30">In gioco</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-purple-500/20 border border-purple-500/40" />
+                    <span className="text-[10px] text-white/30">Tuo</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-white/[0.02]" />
+                    <span className="text-[10px] text-white/30">Eliminato</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-gradient-to-br from-amber-400 to-amber-600" />
+                    <span className="text-[10px] text-white/30">Vincitore</span>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div
-              ref={gridRef}
-              className="grid grid-cols-20 gap-[3px] sm:gap-1 max-h-[400px] overflow-y-auto pr-1"
-              style={{ gridTemplateColumns: "repeat(20, minmax(0, 1fr))" }}
-            >
-              {Array.from({ length: TOTAL_TICKETS }, (_, i) => i + 1).map((num) => {
-                const eliminated = drawnSet.has(num);
-                const isUser = USER_TICKETS.includes(num);
-                const isWin = winnerNumber === num;
+              <div
+                ref={gridRef}
+                className="grid gap-[3px] sm:gap-1 max-h-[400px] overflow-y-auto pr-1"
+                style={{ gridTemplateColumns: "repeat(20, minmax(0, 1fr))" }}
+              >
+                {Array.from({ length: TOTAL_TICKETS }, (_, i) => i + 1).map((num) => {
+                  const eliminated = drawnSet.has(num);
+                  const isUser = USER_TICKETS.includes(num);
+                  const isWin = winnerNumber === num;
 
-                return (
-                  <div
-                    key={num}
-                    className={`aspect-square rounded flex items-center justify-center text-[8px] sm:text-[10px] font-bold transition-all duration-300 ${
-                      isWin
-                        ? "bg-gradient-to-br from-amber-400 to-amber-600 text-black ring-1 ring-amber-400"
-                        : eliminated && isUser
-                        ? "bg-red-500/10 text-red-400/20"
-                        : eliminated
-                        ? "bg-transparent text-white/[0.05]"
-                        : isUser
-                        ? "bg-purple-500/25 text-purple-300 border border-purple-500/40"
-                        : "bg-white/[0.04] text-white/40"
-                    }`}
-                  >
-                    {num}
-                  </div>
-                );
-              })}
+                  return (
+                    <div
+                      key={num}
+                      className={`aspect-square rounded flex items-center justify-center text-[8px] sm:text-[10px] font-bold transition-all duration-300 ${
+                        isWin
+                          ? "bg-gradient-to-br from-amber-400 to-amber-600 text-black ring-1 ring-amber-400"
+                          : eliminated && isUser
+                          ? "bg-red-500/10 text-red-400/20"
+                          : eliminated
+                          ? "bg-transparent text-white/[0.05]"
+                          : isUser
+                          ? "bg-purple-500/25 text-purple-300 border border-purple-500/40"
+                          : "bg-white/[0.04] text-white/40"
+                      }`}
+                    >
+                      {num}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Start button */}
         {phase === "idle" && (
