@@ -107,6 +107,55 @@ function HeartbeatStyle() {
   );
 }
 
+// Confetti explosion component
+function ConfettiExplosion() {
+  const [particles] = useState(() =>
+    Array.from({ length: 80 }, (_, i) => ({
+      id: i,
+      x: (Math.random() - 0.5) * 800,
+      y: -(Math.random() * 600 + 200),
+      rotation: Math.random() * 720 - 360,
+      scale: Math.random() * 1.5 + 0.5,
+      color: ["#f59e0b", "#fbbf24", "#8b5cf6", "#10b981", "#ef4444", "#60a5fa"][
+        Math.floor(Math.random() * 6)
+      ],
+      delay: Math.random() * 0.5,
+      duration: Math.random() * 2 + 2,
+      shape: Math.random() > 0.5 ? "rect" : "circle",
+    }))
+  );
+
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      {particles.map((p) => (
+        <motion.div
+          key={p.id}
+          initial={{ x: 0, y: 0, rotate: 0, scale: 0, opacity: 1 }}
+          animate={{
+            x: p.x,
+            y: p.y,
+            rotate: p.rotation,
+            scale: p.scale,
+            opacity: [1, 1, 0],
+          }}
+          transition={{
+            duration: p.duration,
+            delay: p.delay,
+            ease: "easeOut",
+          }}
+          className="absolute left-1/2 top-1/2"
+          style={{ originX: "50%", originY: "50%" }}
+        >
+          <div
+            className={p.shape === "rect" ? "w-3 h-5 rounded-sm" : "w-3 h-3 rounded-full"}
+            style={{ backgroundColor: p.color }}
+          />
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
 // Showdown component - the dramatic 3-number finale
 function Showdown({
   finalThree,
@@ -116,117 +165,121 @@ function Showdown({
 }: {
   finalThree: number[];
   winnerNumber: number;
-  showdownStep: "shake" | "reveal-text" | "eliminate" | "winner";
+  showdownStep: "shake" | "reveal-text" | "blackout" | "winner";
   userTickets: number[];
 }) {
-  const losers = finalThree.filter((n) => n !== winnerNumber);
   const isUserWinner = userTickets.includes(winnerNumber);
 
   return (
-    <div className="py-8 sm:py-12">
-      {/* "Il vincitore è......" text */}
-      {(showdownStep === "reveal-text" || showdownStep === "eliminate" || showdownStep === "winner") && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="mb-8"
-        >
-          <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white/80">
-            Il vincitore è
-            <motion.span
-              animate={{ opacity: [0.3, 1, 0.3] }}
-              transition={{ repeat: showdownStep === "winner" ? 0 : Infinity, duration: 1.5 }}
-              className="text-amber-400"
-            >
-              ......
-            </motion.span>
-          </div>
-        </motion.div>
-      )}
-
-      {/* The three numbers */}
-      <div className="flex items-center justify-center gap-4 sm:gap-8 md:gap-12">
-        {finalThree.map((num) => {
-          const isWin = num === winnerNumber;
-          const isLoser = losers.includes(num);
-          const isUser = userTickets.includes(num);
-          const eliminated = showdownStep === "eliminate" || showdownStep === "winner";
-
-          return (
-            <AnimatePresence key={num} mode="wait">
-              {/* Hide losers in eliminate/winner step */}
-              {!(isLoser && showdownStep === "winner") && (
-                <motion.div
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={
-                    showdownStep === "shake"
-                      ? { scale: 1, opacity: 1 }
-                      : isLoser && eliminated
-                      ? { scale: 0.3, opacity: 0, y: 50, filter: "blur(10px)" }
-                      : isWin && showdownStep === "winner"
-                      ? { scale: 1.3, opacity: 1 }
-                      : { scale: 1, opacity: 1 }
-                  }
-                  exit={{ scale: 0, opacity: 0, y: 80, filter: "blur(20px)" }}
-                  transition={
-                    isLoser && eliminated
-                      ? { duration: 1.5, ease: "easeInOut" }
-                      : isWin && showdownStep === "winner"
-                      ? { type: "spring", damping: 8, stiffness: 80 }
-                      : { type: "spring", damping: 12, stiffness: 100 }
-                  }
-                  className={`relative flex flex-col items-center ${
-                    showdownStep === "shake" || showdownStep === "reveal-text" ? "shake" : ""
-                  }`}
-                >
-                  <div
-                    className={`w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-2xl flex items-center justify-center font-bold text-3xl sm:text-4xl md:text-5xl transition-all duration-500 ${
-                      isWin && showdownStep === "winner"
-                        ? "bg-gradient-to-br from-amber-400 to-amber-600 text-black heartbeat-glow"
-                        : "bg-white/[0.08] text-white border-2 border-white/20"
-                    } ${
-                      showdownStep === "shake" || showdownStep === "reveal-text"
-                        ? "heartbeat"
-                        : ""
-                    }`}
+    <div className="py-8 sm:py-12 relative">
+      {/* Phase 1 & 2: Show three numbers shaking */}
+      <AnimatePresence>
+        {(showdownStep === "shake" || showdownStep === "reveal-text") && (
+          <motion.div exit={{ opacity: 0 }} transition={{ duration: 0.8 }}>
+            {/* "Il vincitore è......" text */}
+            {showdownStep === "reveal-text" && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8 }}
+                className="mb-8"
+              >
+                <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white/80">
+                  Il vincitore è
+                  <motion.span
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{ repeat: Infinity, duration: 1.5 }}
+                    className="text-amber-400"
                   >
+                    ......
+                  </motion.span>
+                </div>
+              </motion.div>
+            )}
+
+            {/* The three numbers */}
+            <div className="flex items-center justify-center gap-4 sm:gap-8 md:gap-12">
+              {finalThree.map((num) => (
+                <motion.div
+                  key={num}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", damping: 12, stiffness: 100 }}
+                  className="shake"
+                >
+                  <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-2xl flex items-center justify-center font-bold text-3xl sm:text-4xl md:text-5xl bg-white/[0.08] text-white border-2 border-white/20 heartbeat">
                     {num}
                   </div>
                 </motion.div>
-              )}
-            </AnimatePresence>
-          );
-        })}
-      </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Winner reveal */}
-      <AnimatePresence>
-        {showdownStep === "winner" && (
+      {/* Phase 3: Blackout - everything gone */}
+      {showdownStep === "blackout" && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 1, 1, 0.5] }}
+          transition={{ duration: 2, times: [0, 0.3, 0.7, 1] }}
+          className="py-16"
+        >
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1, duration: 0.8 }}
-            className="mt-10"
+            animate={{ scale: [1, 1.05, 1] }}
+            transition={{ repeat: Infinity, duration: 0.8 }}
+            className="text-3xl sm:text-4xl md:text-5xl font-bold text-amber-400"
+          >
+            Il vincitore è...
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* Phase 4: Winner explodes in */}
+      {showdownStep === "winner" && (
+        <div className="relative">
+          <ConfettiExplosion />
+          <motion.div
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", damping: 8, stiffness: 60, delay: 0.2 }}
           >
             <motion.div
               animate={{ rotate: [0, 10, -10, 0] }}
               transition={{ repeat: Infinity, duration: 1.5 }}
-              className="text-6xl sm:text-7xl mb-4"
+              className="text-7xl sm:text-8xl mb-6"
             >
               🏆
             </motion.div>
-            <div className="text-4xl sm:text-5xl md:text-6xl font-bold text-gradient-gold mb-3">
-              #{winnerNumber}
-            </div>
-            <p className="text-white/50 text-lg font-[family-name:var(--font-inter)]">
-              {isUserWinner
-                ? "Congratulazioni! Il tuo ticket ha vinto il viaggio alle Maldive!"
-                : `Il ticket #${winnerNumber} vince il viaggio alle Maldive!`}
-            </p>
+
+            <motion.div
+              initial={{ scale: 0.5 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", damping: 6, stiffness: 50, delay: 0.5 }}
+            >
+              <div className="w-36 h-36 sm:w-48 sm:h-48 md:w-56 md:h-56 rounded-3xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center font-bold text-5xl sm:text-6xl md:text-7xl text-black mx-auto heartbeat-glow">
+                {winnerNumber}
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.2, duration: 0.6 }}
+              className="mt-8"
+            >
+              <div className="text-2xl sm:text-3xl font-bold text-gradient-gold mb-2">
+                {isUserWinner ? "HAI VINTO!" : "VINCITORE!"}
+              </div>
+              <p className="text-white/50 text-lg font-[family-name:var(--font-inter)]">
+                {isUserWinner
+                  ? "Congratulazioni! Il tuo ticket ha vinto il viaggio alle Maldive!"
+                  : `Il ticket #${winnerNumber} vince il viaggio alle Maldive!`}
+              </p>
+            </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }
@@ -244,7 +297,7 @@ export default function ExtractionDemo() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const [userEliminated, setUserEliminated] = useState<number | null>(null);
-  const [showdownStep, setShowdownStep] = useState<"shake" | "reveal-text" | "eliminate" | "winner">("shake");
+  const [showdownStep, setShowdownStep] = useState<"shake" | "reveal-text" | "blackout" | "winner">("shake");
   const [finalThree, setFinalThree] = useState<number[]>([]);
 
   const remaining = TOTAL_TICKETS - drawnNumbers.length;
@@ -373,12 +426,12 @@ export default function ExtractionDemo() {
       setShowdownStep("reveal-text");
     }, 3000);
 
-    // Step 2: "Il vincitore è......" for 4 seconds
+    // Step 2: "Il vincitore è......" for 4 seconds, then all 3 vanish
     const t2 = setTimeout(() => {
-      setShowdownStep("eliminate");
+      setShowdownStep("blackout");
     }, 7000);
 
-    // Step 3: Losers fade away for 2 seconds, then winner
+    // Step 3: Blackout suspense for 2.5 seconds, then winner explodes in with confetti
     const t3 = setTimeout(() => {
       setShowdownStep("winner");
       setPhase("winner");
