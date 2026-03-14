@@ -184,29 +184,15 @@ function Showdown({
                     className={`w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-2xl flex items-center justify-center font-bold text-3xl sm:text-4xl md:text-5xl transition-all duration-500 ${
                       isWin && showdownStep === "winner"
                         ? "bg-gradient-to-br from-amber-400 to-amber-600 text-black heartbeat-glow"
-                        : isWin
-                        ? "heartbeat-glow"
-                        : ""
-                    } ${
-                      isUser
-                        ? "bg-purple-500/20 text-purple-300 border-2 border-purple-500/50"
                         : "bg-white/[0.08] text-white border-2 border-white/20"
                     } ${
                       showdownStep === "shake" || showdownStep === "reveal-text"
                         ? "heartbeat"
                         : ""
                     }`}
-                    style={
-                      isWin && showdownStep === "winner"
-                        ? { animation: "none", transform: "scale(1)" }
-                        : {}
-                    }
                   >
                     {num}
                   </div>
-                  {isUser && (
-                    <span className="mt-2 text-xs text-purple-400 font-bold">TUO</span>
-                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -429,36 +415,40 @@ export default function ExtractionDemo() {
     return () => clearTimeout(timer);
   }, [phase, countdown]);
 
-  const startExtraction = (skipTo200 = false) => {
+  const startExtraction = (mode: "full" | "skip200" | "showdown" = "full") => {
     const allNumbers = Array.from({ length: TOTAL_TICKETS }, (_, i) => i + 1);
     const shuffled = shuffleArray(allNumbers);
     extractionOrder.current = shuffled;
 
-    if (skipTo200) {
-      // Pre-draw 1800 numbers, keep last 200 (make sure user ticket #42 survives)
+    // Common reset
+    setBatchNumbers([]);
+    setCurrentNumber(null);
+    setWinnerNumber(null);
+    setSpinning(false);
+    setUserEliminated(null);
+    setFinalThree([]);
+    setShowdownStep("shake");
+
+    if (mode === "showdown") {
+      // Jump straight to last 3 numbers
+      const startIdx = TOTAL_TICKETS - FINALE_THRESHOLD;
+      indexRef.current = startIdx;
+      setDrawnNumbers(shuffled.slice(0, startIdx));
+      // Trigger showdown directly
+      const remainingNums = shuffled.slice(startIdx);
+      const winner = remainingNums[remainingNums.length - 1];
+      setFinalThree(remainingNums);
+      setWinnerNumber(winner);
+      setPhase("showdown");
+    } else if (mode === "skip200") {
       const startIdx = TOTAL_TICKETS - BATCH_THRESHOLD;
       indexRef.current = startIdx;
-      const preDrawn = shuffled.slice(0, startIdx);
-      setDrawnNumbers(preDrawn);
-      setBatchNumbers([]);
-      setCurrentNumber(null);
-      setWinnerNumber(null);
-      setSpinning(false);
-      setUserEliminated(null);
-      setFinalThree([]);
-      setShowdownStep("shake");
+      setDrawnNumbers(shuffled.slice(0, startIdx));
       setCountdown(3);
       setPhase("countdown");
     } else {
       indexRef.current = 0;
       setDrawnNumbers([]);
-      setBatchNumbers([]);
-      setCurrentNumber(null);
-      setWinnerNumber(null);
-      setSpinning(false);
-      setUserEliminated(null);
-      setFinalThree([]);
-      setShowdownStep("shake");
       setCountdown(5);
       setPhase("countdown");
     }
@@ -641,7 +631,7 @@ export default function ExtractionDemo() {
                 onClick={reset}
                 className="mt-4 px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold hover:from-amber-400 hover:to-amber-500 transition-all glow-gold"
               >
-                Riprova Estrazione
+                Riprova
               </button>
             </motion.div>
           )}
@@ -872,16 +862,22 @@ export default function ExtractionDemo() {
           >
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <button
-                onClick={() => startExtraction(false)}
-                className="px-10 py-5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold text-lg hover:from-amber-400 hover:to-amber-500 transition-all duration-200 glow-gold"
+                onClick={() => startExtraction("full")}
+                className="px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold text-lg hover:from-amber-400 hover:to-amber-500 transition-all duration-200 glow-gold"
               >
-                Estrazione Completa (~15 min)
+                Completa (~15 min)
               </button>
               <button
-                onClick={() => startExtraction(true)}
-                className="px-10 py-5 rounded-2xl glass text-white font-bold text-lg hover:bg-white/10 transition-all duration-200 border border-amber-500/30"
+                onClick={() => startExtraction("skip200")}
+                className="px-8 py-4 rounded-2xl glass text-white font-bold text-lg hover:bg-white/10 transition-all duration-200 border border-amber-500/30"
               >
                 Ultimi 200 (~10 min)
+              </button>
+              <button
+                onClick={() => startExtraction("showdown")}
+                className="px-8 py-4 rounded-2xl glass text-amber-400 font-bold text-lg hover:bg-amber-500/10 transition-all duration-200 border border-amber-500/50"
+              >
+                Solo Finale (3 numeri)
               </button>
             </div>
             <p className="text-white/30 text-sm font-[family-name:var(--font-inter)]">
