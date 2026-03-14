@@ -421,27 +421,47 @@ export default function ExtractionDemo() {
   useEffect(() => {
     if (phase !== "countdown") return;
     if (countdown <= 0) {
-      setPhase("batch");
+      const rem = TOTAL_TICKETS - indexRef.current;
+      setPhase(rem <= BATCH_THRESHOLD ? "slow" : "batch");
       return;
     }
     const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
   }, [phase, countdown]);
 
-  const startExtraction = () => {
+  const startExtraction = (skipTo200 = false) => {
     const allNumbers = Array.from({ length: TOTAL_TICKETS }, (_, i) => i + 1);
-    extractionOrder.current = shuffleArray(allNumbers);
-    indexRef.current = 0;
-    setDrawnNumbers([]);
-    setBatchNumbers([]);
-    setCurrentNumber(null);
-    setWinnerNumber(null);
-    setSpinning(false);
-    setUserEliminated(null);
-    setFinalThree([]);
-    setShowdownStep("shake");
-    setCountdown(5);
-    setPhase("countdown");
+    const shuffled = shuffleArray(allNumbers);
+    extractionOrder.current = shuffled;
+
+    if (skipTo200) {
+      // Pre-draw 1800 numbers, keep last 200 (make sure user ticket #42 survives)
+      const startIdx = TOTAL_TICKETS - BATCH_THRESHOLD;
+      indexRef.current = startIdx;
+      const preDrawn = shuffled.slice(0, startIdx);
+      setDrawnNumbers(preDrawn);
+      setBatchNumbers([]);
+      setCurrentNumber(null);
+      setWinnerNumber(null);
+      setSpinning(false);
+      setUserEliminated(null);
+      setFinalThree([]);
+      setShowdownStep("shake");
+      setCountdown(3);
+      setPhase("countdown");
+    } else {
+      indexRef.current = 0;
+      setDrawnNumbers([]);
+      setBatchNumbers([]);
+      setCurrentNumber(null);
+      setWinnerNumber(null);
+      setSpinning(false);
+      setUserEliminated(null);
+      setFinalThree([]);
+      setShowdownStep("shake");
+      setCountdown(5);
+      setPhase("countdown");
+    }
   };
 
   const reset = () => {
@@ -848,16 +868,24 @@ export default function ExtractionDemo() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-8 text-center"
+            className="mt-8 text-center space-y-4"
           >
-            <button
-              onClick={startExtraction}
-              className="px-12 py-5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold text-xl hover:from-amber-400 hover:to-amber-500 transition-all duration-200 glow-gold"
-            >
-              Avvia Estrazione Demo
-            </button>
-            <p className="text-white/30 text-sm mt-3 font-[family-name:var(--font-inter)]">
-              {TOTAL_TICKETS.toLocaleString("it-IT")} ticket &bull; {USER_TICKETS.length} sono tuoi &bull; l&apos;ultimo numero rimasto vince &bull; ~15 min
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={() => startExtraction(false)}
+                className="px-10 py-5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold text-lg hover:from-amber-400 hover:to-amber-500 transition-all duration-200 glow-gold"
+              >
+                Estrazione Completa (~15 min)
+              </button>
+              <button
+                onClick={() => startExtraction(true)}
+                className="px-10 py-5 rounded-2xl glass text-white font-bold text-lg hover:bg-white/10 transition-all duration-200 border border-amber-500/30"
+              >
+                Ultimi 200 (~10 min)
+              </button>
+            </div>
+            <p className="text-white/30 text-sm font-[family-name:var(--font-inter)]">
+              {TOTAL_TICKETS.toLocaleString("it-IT")} ticket &bull; {USER_TICKETS.length} sono tuoi &bull; l&apos;ultimo numero rimasto vince
             </p>
           </motion.div>
         )}
