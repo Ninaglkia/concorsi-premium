@@ -302,8 +302,13 @@ export default function ExtractionDemo() {
       return;
     }
 
-    const batchEnd = Math.min(idx + BATCH_SIZE, order.length - BATCH_THRESHOLD - 1);
+    const batchEnd = Math.min(idx + BATCH_SIZE, order.length - BATCH_THRESHOLD);
     const batch = order.slice(idx, batchEnd);
+
+    if (batch.length === 0) {
+      setPhase("slow");
+      return;
+    }
 
     setSpinning(true);
     setTimeout(() => {
