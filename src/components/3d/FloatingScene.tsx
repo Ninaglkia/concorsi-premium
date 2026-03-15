@@ -2,7 +2,7 @@
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, Environment } from "@react-three/drei";
-import { Suspense, useRef, useMemo } from "react";
+import { Suspense, useRef, useMemo, useEffect } from "react";
 import * as THREE from "three";
 
 useGLTF.preload("/models/money-bundle.glb");
@@ -108,7 +108,18 @@ const bundles = [
   { position: [2.5, 1.5, -1.8] as [number, number, number], rotation: [-0.15, -0.3, 0.1] as [number, number, number], scale: 1.6 },
 ];
 
-function Scene() {
+function ReadyNotifier({ onReady }: { onReady: () => void }) {
+  const called = useRef(false);
+  useEffect(() => {
+    if (!called.current) {
+      called.current = true;
+      onReady();
+    }
+  }, [onReady]);
+  return null;
+}
+
+function Scene({ onReady }: { onReady: () => void }) {
   return (
     <>
       <ambientLight intensity={0.6} />
@@ -124,11 +135,12 @@ function Scene() {
       ))}
 
       <Environment preset="city" />
+      <ReadyNotifier onReady={onReady} />
     </>
   );
 }
 
-export default function FloatingScene() {
+export default function FloatingScene({ onReady }: { onReady?: () => void }) {
   return (
     <div className="absolute inset-0 z-0">
       <Canvas
@@ -139,7 +151,7 @@ export default function FloatingScene() {
         performance={{ min: 0.5 }}
       >
         <Suspense fallback={null}>
-          <Scene />
+          <Scene onReady={onReady || (() => {})} />
         </Suspense>
       </Canvas>
     </div>
