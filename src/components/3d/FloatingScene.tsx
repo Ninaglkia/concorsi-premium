@@ -1,11 +1,10 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useGLTF, Float, Environment } from "@react-three/drei";
-import { Suspense, useRef, useState, useCallback } from "react";
+import { useGLTF, Environment } from "@react-three/drei";
+import { Suspense, useRef, useMemo } from "react";
 import * as THREE from "three";
 
-// Preload the model
 useGLTF.preload("/models/money-bundle.glb");
 
 function DraggableMoneyBundle({
@@ -19,82 +18,65 @@ function DraggableMoneyBundle({
 }) {
   const { scene } = useGLTF("/models/money-bundle.glb");
   const ref = useRef<THREE.Group>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [hovered, setHovered] = useState(false);
+  const isDragging = useRef(false);
   const dragPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
-  const offset = useRef(new THREE.Vector3());
+  const offsetVec = useRef(new THREE.Vector3());
+  const intersectVec = useRef(new THREE.Vector3());
+  const raycaster = useRef(new THREE.Raycaster());
+  const pointer = useRef(new THREE.Vector2());
   const { camera, gl } = useThree();
 
-  // Clone the scene so each instance is independent
-  const clonedScene = scene.clone(true);
+  const clonedScene = useMemo(() => scene.clone(true), [scene]);
 
-  const handlePointerDown = useCallback(
-    (e: any) => {
-      e.stopPropagation();
-      setIsDragging(true);
-      gl.domElement.style.cursor = "grabbing";
+  const getPointer = (e: any) => {
+    const rect = gl.domElement.getBoundingClientRect();
+    pointer.current.set(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+  };
 
-      // Set up drag plane perpendicular to camera
-      const cameraDir = new THREE.Vector3();
-      camera.getWorldDirection(cameraDir);
-      dragPlane.current.setFromNormalAndCoplanarPoint(
-        cameraDir.negate(),
-        ref.current!.position
-      );
+  const onPointerDown = (e: any) => {
+    e.stopPropagation();
+    isDragging.current = true;
+    gl.domElement.style.cursor = "grabbing";
 
-      // Calculate offset
-      const intersection = new THREE.Vector3();
-      const raycaster = new THREE.Raycaster();
-      const pointer = new THREE.Vector2(
-        ((e as unknown as PointerEvent).clientX / gl.domElement.clientWidth) * 2 - 1,
-        -((e as unknown as PointerEvent).clientY / gl.domElement.clientHeight) * 2 + 1
-      );
-      raycaster.setFromCamera(pointer, camera);
-      raycaster.ray.intersectPlane(dragPlane.current, intersection);
-      offset.current.copy(ref.current!.position).sub(intersection);
+    const camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
+    dragPlane.current.setFromNormalAndCoplanarPoint(camDir.negate(), ref.current!.position);
 
-      // Capture pointer
-      (e.target as Element)?.setPointerCapture?.((e as unknown as PointerEvent).pointerId);
-    },
-    [camera, gl]
-  );
+    getPointer(e);
+    raycaster.current.setFromCamera(pointer.current, camera);
+    raycaster.current.ray.intersectPlane(dragPlane.current, intersectVec.current);
+    offsetVec.current.copy(ref.current!.position).sub(intersectVec.current);
 
-  const handlePointerMove = useCallback(
-    (e: any) => {
-      if (!isDragging) return;
-      e.stopPropagation();
+    e.target?.setPointerCapture?.(e.pointerId);
+  };
 
-      const intersection = new THREE.Vector3();
-      const raycaster = new THREE.Raycaster();
-      const pointer = new THREE.Vector2(
-        ((e as unknown as PointerEvent).clientX / gl.domElement.clientWidth) * 2 - 1,
-        -((e as unknown as PointerEvent).clientY / gl.domElement.clientHeight) * 2 + 1
-      );
-      raycaster.setFromCamera(pointer, camera);
-      raycaster.ray.intersectPlane(dragPlane.current, intersection);
+  const onPointerMove = (e: any) => {
+    if (!isDragging.current) return;
+    e.stopPropagation();
 
-      if (ref.current) {
-        ref.current.position.copy(intersection.add(offset.current));
-      }
-    },
-    [isDragging, camera, gl]
-  );
+    getPointer(e);
+    raycaster.current.setFromCamera(pointer.current, camera);
+    raycaster.current.ray.intersectPlane(dragPlane.current, intersectVec.current);
 
-  const handlePointerUp = useCallback(
-    (e: any) => {
-      e.stopPropagation();
-      setIsDragging(false);
-      gl.domElement.style.cursor = hovered ? "grab" : "auto";
-    },
-    [gl, hovered]
-  );
+    if (ref.current) {
+      ref.current.position.copy(intersectVec.current.add(offsetVec.current));
+    }
+  };
+
+  const onPointerUp = (e: any) => {
+    e.stopPropagation();
+    isDragging.current = false;
+    gl.domElement.style.cursor = "grab";
+  };
 
   useFrame((state) => {
-    if (!ref.current || isDragging) return;
-    // Gentle idle rotation
+    if (!ref.current || isDragging.current) return;
     ref.current.rotation.y += 0.003;
     ref.current.position.y =
-      initialPosition[1] + Math.sin(state.clock.elapsedTime * 0.8 + initialPosition[0]) * 0.1;
+      initialPosition[1] + Math.sin(state.clock.elapsedTime * 0.8 + initialPosition[0]) * 0.08;
   });
 
   return (
@@ -103,16 +85,14 @@ function DraggableMoneyBundle({
       position={initialPosition}
       rotation={initialRotation}
       scale={scale}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
       onPointerOver={() => {
-        setHovered(true);
-        if (!isDragging) gl.domElement.style.cursor = "grab";
+        if (!isDragging.current) gl.domElement.style.cursor = "grab";
       }}
       onPointerOut={() => {
-        setHovered(false);
-        if (!isDragging) gl.domElement.style.cursor = "auto";
+        if (!isDragging.current) gl.domElement.style.cursor = "auto";
       }}
     >
       <primitive object={clonedScene} />
@@ -120,31 +100,19 @@ function DraggableMoneyBundle({
   );
 }
 
-const bundles: {
-  position: [number, number, number];
-  rotation: [number, number, number];
-  scale: number;
-}[] = [
-  { position: [-3.2, 0.8, -1], rotation: [0.1, 0.5, 0.1], scale: 2.5 },
-  { position: [3.5, -0.3, -0.5], rotation: [-0.1, -0.8, 0.15], scale: 2 },
-  { position: [0, 1.8, -2], rotation: [0.2, 1.2, -0.1], scale: 1.8 },
-  { position: [-2, -1.5, -1.5], rotation: [0, 2.5, 0.2], scale: 2.2 },
-  { position: [2.5, 1.5, -1.8], rotation: [-0.15, -0.3, 0.1], scale: 1.6 },
+const bundles = [
+  { position: [-3.2, 0.8, -1] as [number, number, number], rotation: [0.1, 0.5, 0.1] as [number, number, number], scale: 2.5 },
+  { position: [3.5, -0.3, -0.5] as [number, number, number], rotation: [-0.1, -0.8, 0.15] as [number, number, number], scale: 2 },
+  { position: [0, 1.8, -2] as [number, number, number], rotation: [0.2, 1.2, -0.1] as [number, number, number], scale: 1.8 },
+  { position: [-2, -1.5, -1.5] as [number, number, number], rotation: [0, 2.5, 0.2] as [number, number, number], scale: 2.2 },
+  { position: [2.5, 1.5, -1.8] as [number, number, number], rotation: [-0.15, -0.3, 0.1] as [number, number, number], scale: 1.6 },
 ];
 
 function Scene() {
   return (
     <>
-      <ambientLight intensity={0.5} />
-      <pointLight position={[10, 10, 10]} intensity={1.2} color="#f59e0b" />
-      <pointLight position={[-10, -5, 5]} intensity={0.6} color="#8b5cf6" />
-      <spotLight
-        position={[0, 10, 5]}
-        intensity={1}
-        angle={0.5}
-        penumbra={1}
-        color="#fbbf24"
-      />
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[5, 8, 5]} intensity={1} color="#f59e0b" />
 
       {bundles.map((b, i) => (
         <DraggableMoneyBundle
@@ -165,8 +133,10 @@ export default function FloatingScene() {
     <div className="absolute inset-0 z-0">
       <Canvas
         camera={{ position: [0, 0, 6], fov: 55 }}
-        gl={{ antialias: true, alpha: true }}
+        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+        dpr={[1, 1.5]}
         style={{ background: "transparent" }}
+        performance={{ min: 0.5 }}
       >
         <Suspense fallback={null}>
           <Scene />
