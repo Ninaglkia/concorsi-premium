@@ -23,8 +23,8 @@ export default function Hero() {
       {/* 3D Scene */}
       <FloatingScene />
 
-      {/* Content */}
-      <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
+      {/* Content — pointer-events-none so 3D objects are grabbable through text */}
+      <div className="relative z-10 text-center px-4 max-w-4xl mx-auto pointer-events-none">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -66,7 +66,7 @@ export default function Hero() {
         >
           <a
             href="/concorsi"
-            className="group relative px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold text-lg hover:from-amber-400 hover:to-amber-500 transition-all duration-300 glow-gold"
+            className="pointer-events-auto group relative px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold text-lg hover:from-amber-400 hover:to-amber-500 transition-all duration-300 glow-gold"
           >
             Scopri i Concorsi
             <span className="ml-2 inline-block group-hover:translate-x-1 transition-transform">
@@ -75,7 +75,7 @@ export default function Hero() {
           </a>
           <a
             href="#come-funziona"
-            className="px-8 py-4 rounded-2xl glass text-white/80 hover:text-white font-semibold text-lg transition-all duration-300 hover:bg-white/10"
+            className="pointer-events-auto px-8 py-4 rounded-2xl glass text-white/80 hover:text-white font-semibold text-lg transition-all duration-300 hover:bg-white/10"
           >
             Come Funziona
           </a>
