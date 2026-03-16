@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { createClient } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 
 const navLinks = [
   { label: "Home", href: "/" },
@@ -10,8 +13,53 @@ const navLinks = [
   { label: "Estrazioni Live", href: "/estrazioni" },
 ];
 
+function getInitials(user: User): string {
+  const fullName: string | undefined =
+    user.user_metadata?.full_name ?? user.user_metadata?.name;
+  if (fullName) {
+    return fullName
+      .split(" ")
+      .map((n: string) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  }
+  return (user.email?.[0] ?? "U").toUpperCase();
+}
+
 export default function Navbar() {
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    // Get initial session
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+      setAuthLoading(false);
+    });
+
+    // Subscribe to auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    setLogoutLoading(true);
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setLogoutLoading(false);
+    setMobileOpen(false);
+    router.push("/");
+    router.refresh();
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50">
@@ -40,20 +88,49 @@ export default function Navbar() {
             ))}
           </div>
 
-          {/* CTA */}
+          {/* CTA — auth-aware */}
           <div className="hidden md:flex items-center gap-3">
-            <a
-              href="/auth/login"
-              className="text-sm text-white/70 hover:text-white transition-colors"
-            >
-              Accedi
-            </a>
-            <a
-              href="/auth/login"
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black text-sm font-semibold hover:from-amber-400 hover:to-amber-500 transition-all duration-200 glow-gold"
-            >
-              Registrati
-            </a>
+            {authLoading ? (
+              <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+            ) : user ? (
+              <>
+                <a
+                  href="/profilo"
+                  className="flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center font-bold text-black text-xs">
+                    {getInitials(user)}
+                  </div>
+                  Il Mio Profilo
+                </a>
+                <button
+                  onClick={handleLogout}
+                  disabled={logoutLoading}
+                  className="px-4 py-2 rounded-xl border border-white/10 text-white/50 text-sm font-medium hover:text-white hover:border-white/25 transition-all duration-200 disabled:opacity-40"
+                >
+                  {logoutLoading ? (
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                  ) : (
+                    "Esci"
+                  )}
+                </button>
+              </>
+            ) : (
+              <>
+                <a
+                  href="/auth/login"
+                  className="text-sm text-white/70 hover:text-white transition-colors"
+                >
+                  Accedi
+                </a>
+                <a
+                  href="/auth/login"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black text-sm font-semibold hover:from-amber-400 hover:to-amber-500 transition-all duration-200 glow-gold"
+                >
+                  Registrati
+                </a>
+              </>
+            )}
           </div>
 
           {/* Mobile hamburger */}
@@ -95,16 +172,43 @@ export default function Navbar() {
                   {link.label}
                 </a>
               ))}
-              <div className="mt-3 pt-3 border-t border-white/10 flex gap-3">
-                <a href="/auth/login" className="text-sm text-white/70 hover:text-white">
-                  Accedi
-                </a>
-                <a
-                  href="/auth/login"
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black text-sm font-semibold"
-                >
-                  Registrati
-                </a>
+              <div className="mt-3 pt-3 border-t border-white/10 flex gap-3 items-center">
+                {authLoading ? (
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                ) : user ? (
+                  <>
+                    <a
+                      href="/profilo"
+                      className="flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center font-bold text-black text-xs">
+                        {getInitials(user)}
+                      </div>
+                      Il Mio Profilo
+                    </a>
+                    <button
+                      onClick={handleLogout}
+                      disabled={logoutLoading}
+                      className="ml-auto text-sm text-white/40 hover:text-white/70 transition-colors disabled:opacity-40"
+                    >
+                      Esci
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <a href="/auth/login" className="text-sm text-white/70 hover:text-white" onClick={() => setMobileOpen(false)}>
+                      Accedi
+                    </a>
+                    <a
+                      href="/auth/login"
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black text-sm font-semibold"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      Registrati
+                    </a>
+                  </>
+                )}
               </div>
             </motion.div>
           )}

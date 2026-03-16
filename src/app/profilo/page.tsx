@@ -2,6 +2,9 @@
 
 import { motion, AnimatePresence, useMotionValue, useSpring, animate } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 
@@ -602,7 +605,28 @@ function Toggle({ defaultChecked }: { defaultChecked: boolean }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ProfiloPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("tickets");
+  const [user, setUser] = useState<User | null>(null);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) {
+        router.replace("/auth/login");
+        return;
+      }
+      setUser(data.user);
+    });
+  }, [router]);
+
+  const handleLogout = async () => {
+    setLogoutLoading(true);
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/");
+  };
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "tickets", label: "I Miei Ticket", count: mockActiveTickets.length },
@@ -610,10 +634,21 @@ export default function ProfiloPage() {
     { id: "settings", label: "Impostazioni" },
   ];
 
-  const initials = mockUser.name
+  // Derive display name and email from real user, falling back to mock for layout
+  const displayName: string =
+    user?.user_metadata?.full_name ??
+    user?.user_metadata?.name ??
+    user?.email?.split("@")[0] ??
+    mockUser.name;
+
+  const displayEmail: string = user?.email ?? mockUser.email;
+
+  const initials = displayName
     .split(" ")
     .map((n) => n[0])
-    .join("");
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] relative">
@@ -634,15 +669,31 @@ export default function ProfiloPage() {
             Concorsi Premium
           </span>
         </a>
-        <a
-          href="/"
-          className="flex items-center gap-1.5 text-sm text-white/40 hover:text-white/70 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Home
-        </a>
+        <div className="flex items-center gap-4">
+          <a
+            href="/"
+            className="flex items-center gap-1.5 text-sm text-white/40 hover:text-white/70 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Home
+          </a>
+          <button
+            onClick={handleLogout}
+            disabled={logoutLoading}
+            className="flex items-center gap-1.5 text-sm text-white/30 hover:text-white/60 transition-colors disabled:opacity-40"
+          >
+            {logoutLoading ? (
+              <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            )}
+            Esci
+          </button>
+        </div>
       </nav>
 
       <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 pb-20">
@@ -667,7 +718,7 @@ export default function ProfiloPage() {
                     {initials}
                   </div>
                 </div>
-                {mockUser.wins > 0 && (
+                {mockUser.wins > 0 && user && (
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
@@ -687,7 +738,7 @@ export default function ProfiloPage() {
                   transition={{ delay: 0.2 }}
                   className="text-2xl sm:text-3xl font-bold tracking-tight"
                 >
-                  {mockUser.name}
+                  {displayName}
                 </motion.h1>
                 <motion.p
                   initial={{ opacity: 0 }}
@@ -695,7 +746,7 @@ export default function ProfiloPage() {
                   transition={{ delay: 0.3 }}
                   className="text-sm text-white/40 mt-1 font-[family-name:var(--font-inter)]"
                 >
-                  {mockUser.email}
+                  {displayEmail}
                 </motion.p>
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -705,7 +756,7 @@ export default function ProfiloPage() {
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" style={{ boxShadow: "0 0 5px #34d399" }} />
                   <span className="text-xs text-white/30 font-[family-name:var(--font-inter)]">
-                    Membro dal {mockUser.joinedAt}
+                    Membro dal {user ? new Date(user.created_at).toLocaleDateString("it-IT", { month: "long", year: "numeric" }) : mockUser.joinedAt}
                   </span>
                 </motion.div>
               </div>
@@ -928,7 +979,7 @@ export default function ProfiloPage() {
                       <label className="block text-xs text-white/35 uppercase tracking-wider mb-2">Nome</label>
                       <input
                         type="text"
-                        defaultValue={mockUser.name}
+                        defaultValue={displayName}
                         className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/40 focus:bg-white/[0.06] transition-all duration-200 font-[family-name:var(--font-inter)] text-sm"
                       />
                     </div>
@@ -936,12 +987,12 @@ export default function ProfiloPage() {
                       <label className="block text-xs text-white/35 uppercase tracking-wider mb-2">Email</label>
                       <input
                         type="email"
-                        defaultValue={mockUser.email}
+                        defaultValue={displayEmail}
                         disabled
                         className="w-full px-4 py-3 rounded-xl bg-white/[0.02] border border-white/[0.06] text-white/25 cursor-not-allowed font-[family-name:var(--font-inter)] text-sm"
                       />
                       <p className="text-xs text-white/20 mt-1.5 font-[family-name:var(--font-inter)]">
-                        Gestita tramite Google. Non modificabile.
+                        Non modificabile.
                       </p>
                     </div>
                   </div>

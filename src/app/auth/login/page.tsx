@@ -2,14 +2,45 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { z } from "zod";
+
+// ─── Validation Schemas ────────────────────────────────────────────────────────
+
+const emailSchema = z
+  .string()
+  .email("Inserisci un indirizzo email valido")
+  .transform((v) => v.trim().toLowerCase());
+
+const passwordSchema = z
+  .string()
+  .min(6, "La password deve avere almeno 6 caratteri");
+
+const loginSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+});
+
+const signupSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+});
+
+type Mode = "login" | "signup";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const [mode, setMode] = useState<Mode>("login");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   const handleGoogleLogin = async () => {
-    setLoading(true);
+    setGoogleLoading(true);
     setError(null);
 
     const supabase = createClient();
@@ -21,9 +52,77 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setError("Errore durante il login. Riprova.");
+      setError("Errore durante il login con Google. Riprova.");
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMessage(null);
+    setLoading(true);
+
+    const schema = mode === "login" ? loginSchema : signupSchema;
+    const result = schema.safeParse({ email, password });
+
+    if (!result.success) {
+      const firstError = result.error.issues[0]?.message ?? "Dati non validi.";
+      setError(firstError);
+      setLoading(false);
+      return;
+    }
+
+    const supabase = createClient();
+
+    if (mode === "login") {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: result.data.email,
+        password: result.data.password,
+      });
+
+      if (error) {
+        if (error.message.toLowerCase().includes("invalid login credentials")) {
+          setError("Email o password non corretti. Riprova.");
+        } else if (error.message.toLowerCase().includes("email not confirmed")) {
+          setError("Devi confermare la tua email prima di accedere.");
+        } else {
+          setError("Errore durante l'accesso. Riprova.");
+        }
+        setLoading(false);
+        return;
+      }
+
+      router.push("/profilo");
+    } else {
+      const { error } = await supabase.auth.signUp({
+        email: result.data.email,
+        password: result.data.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        if (error.message.toLowerCase().includes("already registered")) {
+          setError("Questo indirizzo email è già registrato. Prova ad accedere.");
+        } else {
+          setError("Errore durante la registrazione. Riprova.");
+        }
+        setLoading(false);
+        return;
+      }
+
+      setSuccessMessage("Controlla la tua email per confermare l'account.");
       setLoading(false);
     }
+  };
+
+  const switchMode = (newMode: Mode) => {
+    setMode(newMode);
+    setError(null);
+    setSuccessMessage(null);
+    setPassword("");
   };
 
   return (
@@ -57,25 +156,69 @@ export default function LoginPage() {
           transition={{ delay: 0.1 }}
           className="glass p-8"
         >
-          <h1 className="text-2xl font-bold text-center mb-2">Accedi</h1>
+          {/* Mode toggle */}
+          <div className="flex gap-1 p-1 glass mb-6 rounded-xl">
+            <button
+              onClick={() => switchMode("login")}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                mode === "login"
+                  ? "bg-gradient-to-r from-amber-500 to-amber-600 text-black"
+                  : "text-white/40 hover:text-white/70"
+              }`}
+            >
+              Accedi
+            </button>
+            <button
+              onClick={() => switchMode("signup")}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                mode === "signup"
+                  ? "bg-gradient-to-r from-amber-500 to-amber-600 text-black"
+                  : "text-white/40 hover:text-white/70"
+              }`}
+            >
+              Registrati
+            </button>
+          </div>
+
           <p className="text-white/40 text-center text-sm mb-8 font-[family-name:var(--font-inter)]">
-            Entra per partecipare ai concorsi e vincere premi straordinari
+            {mode === "login"
+              ? "Entra per partecipare ai concorsi e vincere premi straordinari"
+              : "Crea un account per iniziare a partecipare ai concorsi"}
           </p>
 
           {/* Error */}
-          {error && (
-            <div className="mb-6 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center">
-              {error}
-            </div>
-          )}
+          <AnimatePresence mode="wait">
+            {error && (
+              <motion.div
+                key="error"
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="mb-6 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center font-[family-name:var(--font-inter)]"
+              >
+                {error}
+              </motion.div>
+            )}
+            {successMessage && (
+              <motion.div
+                key="success"
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="mb-6 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm text-center font-[family-name:var(--font-inter)]"
+              >
+                {successMessage}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Google login button */}
           <button
             onClick={handleGoogleLogin}
-            disabled={loading}
+            disabled={googleLoading || loading}
             className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-white text-black font-semibold text-base hover:bg-white/90 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? (
+            {googleLoading ? (
               <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
             ) : (
               <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -107,10 +250,52 @@ export default function LoginPage() {
             <div className="flex-1 h-px bg-white/10" />
           </div>
 
-          {/* Future: email login placeholder */}
-          <p className="text-center text-white/30 text-sm font-[family-name:var(--font-inter)]">
-            Altre opzioni di login in arrivo
-          </p>
+          {/* Email/Password form */}
+          <form onSubmit={handleEmailSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs text-white/35 uppercase tracking-wider mb-2 font-[family-name:var(--font-inter)]">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tua@email.it"
+                required
+                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/40 focus:bg-white/[0.06] transition-all duration-200 font-[family-name:var(--font-inter)] text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-white/35 uppercase tracking-wider mb-2 font-[family-name:var(--font-inter)]">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={mode === "signup" ? "Minimo 6 caratteri" : "••••••••"}
+                required
+                minLength={6}
+                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/40 focus:bg-white/[0.06] transition-all duration-200 font-[family-name:var(--font-inter)] text-sm"
+              />
+            </div>
+
+            <motion.button
+              type="submit"
+              disabled={loading || googleLoading}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold text-base hover:from-amber-400 hover:to-amber-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed glow-gold"
+            >
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+              ) : mode === "login" ? (
+                "Accedi"
+              ) : (
+                "Crea account"
+              )}
+            </motion.button>
+          </form>
         </motion.div>
 
         {/* Footer */}
